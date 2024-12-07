@@ -21,13 +21,13 @@ const map = {[MEDIA_ON]: true, [MEDIA_OFF]: false};
 
 (async () => {
   let isDark, favicon;
-  if (window === top) ({dark: isDark, favicon} = process.env.MV3 ? clientData : await clientData);
+  if (window === top) ({dark: isDark, favicon} = __.MV3 ? clientData : await clientData);
   else isDark = parent.document.documentElement.dataset.uiTheme === 'dark';
-  toggle(isDark, true);
+  updateDOM(isDark);
   onExtension(e => {
-    if (e.method === 'colorScheme') {
+    if (e.method === 'colorScheme' && isDark !== e.value) {
       isDark = e.value;
-      toggle(isDark);
+      updateDOM(isDark);
     }
   });
   if (favicon
@@ -41,9 +41,8 @@ const map = {[MEDIA_ON]: true, [MEDIA_OFF]: false};
   }
 })();
 
-function toggle(isDark, firstRun) {
+function updateDOM(isDark) {
   $.root.dataset.uiTheme = isDark ? 'dark' : 'light';
-  if (firstRun && !isDark) return;
   getCssMediaRuleByName(MEDIA_NAME, m => {
     if (map[m[0]] !== isDark) {
       m.mediaText = `${isDark ? MEDIA_ON : MEDIA_OFF},${MEDIA_NAME}`;
