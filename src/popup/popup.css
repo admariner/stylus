@@ -29,12 +29,6 @@ body {
 body[style*="max-height:"] > main {
   overflow-y: auto;
 }
-.search-results-shown {
-  overflow-y: auto;
-  > body {
-    max-height: none !important; /* overriding our inline style */
-  }
-}
 
 .firefox button {
   transition: none; /* FF borks subpixel AA during transitions in popup */
@@ -59,8 +53,9 @@ body > div:not([id=message-box]/*avoiding # to keep specificity low*/):not(.colo
   position: relative;
   background: var(--c95);
   z-index: 4;
-  padding: var(--outer-padding);
+  padding: 0;
   > * {
+    padding: var(--outer-padding);
     display: flex;
     align-items: center;
   }
@@ -432,6 +427,9 @@ a:hover i {
   display: none;
 }
 
+#write-wrapper:not(.hidden) {
+  border-right: var(--border);
+}
 #write-style {
   cursor: pointer;
   overflow: hidden;
