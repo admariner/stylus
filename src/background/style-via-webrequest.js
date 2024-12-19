@@ -1,16 +1,17 @@
-import {kAppJson, kMainFrame, kPopup} from '/js/consts';
-import {updateSessionRules} from '/js/dnr';
-import {API} from '/js/msg';
-import * as prefs from '/js/prefs';
-import {CHROME, FIREFOX} from '/js/ua';
-import {actionPopupUrl, ownRoot} from '/js/urls';
-import {deepEqual, isEmptyObj} from '/js/util';
-import {ignoreChromeError, ownId, toggleListener} from '/js/util-webext';
+import {kAppJson, kMainFrame, kPopup, kSubFrame} from '@/js/consts';
+import {updateSessionRules} from '@/js/dnr';
+import {API} from '@/js/msg';
+import * as prefs from '@/js/prefs';
+import {CHROME, FIREFOX} from '@/js/ua';
+import {actionPopupUrl, ownRoot} from '@/js/urls';
+import {deepEqual, isEmptyObj} from '@/js/util';
+import {ignoreChromeError, ownId, toggleListener} from '@/js/util-webext';
 import {bgBusy, bgPreInit, stateDB} from './common';
 import {webNavigation} from './navigation-manager';
+import offscreen from './offscreen';
 import makePopupData from './popup-data';
-import * as styleCache from './style-cache';
 import {getSectionsByUrl} from './style-manager';
+import * as styleCache from './style-manager/cache';
 import * as tabMan from './tab-manager';
 
 const idCSP = 'patchCsp';
@@ -19,7 +20,6 @@ const idXHR = 'styleViaXhr';
 const REVOKE_TIMEOUT = 10e3;
 const kRuleIds = 'ruleIds';
 const kSetCookie = 'set-cookie'; // must be lowercase
-const kSubFrame = 'sub_frame';
 const rxHOST = /^('non(e|ce-.+?)'|(https?:\/\/)?[^']+?[^:'])$/; // strips CSP sources covered by *
 const rxNONCE = /(?:^|[;,])\s*style-src\s+[^;,]*?'nonce-([-+/=\w]+)'/;
 const BLOB_URL_PREFIX = 'blob:' + ownRoot;
@@ -32,7 +32,7 @@ const makeBlob = data => new Blob([JSON.stringify(data)], {type: kAppJson});
 const makeXhrCookie = blobId => `${ownId}=${blobId}; SameSite=Lax`;
 const req2key = req => req.tabId + ':' + req.frameId;
 const revokeObjectURL = blobId => blobId &&
-  (process.env.MV3 ? global.offscreen : URL).revokeObjectURL(BLOB_URL_PREFIX + blobId);
+  (__.MV3 ? offscreen : URL).revokeObjectURL(BLOB_URL_PREFIX + blobId);
 const toSend = {};
 const INJECTED_FUNC = function (data) {
   if (this['apply.js'] !== 1) { // storing data only if apply.js hasn't run yet
@@ -50,18 +50,19 @@ let curOFF = true;
 let curCSP = false;
 let curXHR = false;
 
-if (process.env.MV3) {
+if (__.MV3) {
   toggle(); // register listeners synchronously so they wake up the SW next time it dies
-  global.offscreen.syncLifetimeToSW(true);
   bgPreInit.push((async () => {
     ruleIds = await stateDB.get(kRuleIds) || {};
     for (const id in ruleIds) ruleIdKeys[ruleIds[id]] = +id;
   })());
 }
+
 prefs.ready.then(() => {
-  toggle(process.env.MV3); // in MV3 this will unregister unused listeners
+  toggle(__.MV3); // in MV3 this will unregister unused listeners
   prefs.subscribe([idOFF, idCSP, idXHR], toggle);
 });
+
 bgBusy.then(() => {
   const tabIds = [];
   for (let key in ruleIdKeys) {
@@ -71,18 +72,22 @@ bgBusy.then(() => {
   }
   if (tabIds.length) removeTabData(tabIds);
 });
+
 tabMan.onUnload.add((tabId, frameId) => {
   if (frameId) setTimeout(removePreloadedStyles, REVOKE_TIMEOUT, null, tabId + ':' + frameId);
   else removeTabData([tabId]);
 });
+
 webNavigation.onErrorOccurred.addListener(removePreloadedStyles, WEBNAV_FILTER);
-if (CHROME && !process.env.MV3 && process.env.BUILD !== 'firefox') {
+
+if (CHROME && !__.MV3 && __.BUILD !== 'firefox') {
   chrome.webRequest.onBeforeRequest.addListener(openNamedStyle, {
     urls: [ownRoot + '*.user.css'],
     types: [kMainFrame],
   }, ['blocking']);
 }
-if (CHROME && process.env.BUILD !== 'firefox') {
+
+if (CHROME && __.BUILD !== 'firefox') {
   chrome.webRequest.onBeforeRequest.addListener(req => {
     // tabId < 0 means the popup is shown normally and not as a page in a tab
     API.data.set(kPopup, req.tabId < 0 && makePopupData());
@@ -94,7 +99,7 @@ if (CHROME && process.env.BUILD !== 'firefox') {
 
 function toggle(prefKey) {
   // Must register all listeners synchronously to make them wake the SW
-  const mv3init = process.env.MV3 && !prefKey;
+  const mv3init = __.MV3 && !prefKey;
   const off = prefs.__values[idOFF];
   const csp = !off && prefs.__values[idCSP];
   const xhr = !off && prefs.__values[idXHR];
@@ -102,8 +107,8 @@ function toggle(prefKey) {
     return;
   }
   let v;
-  if (process.env.BUILD !== 'chrome' && FIREFOX || (
-    process.env.MV3
+  if (__.BUILD !== 'chrome' && FIREFOX || (
+    __.MV3
       ? csp !== curCSP
       : (xhr || csp) !== (curXHR || curCSP)
   )) {
@@ -113,7 +118,7 @@ function toggle(prefKey) {
     toggleListener(v, true, modifyHeaders, WR_FILTER, [
       'blocking',
       'responseHeaders',
-      !process.env.MV3 && xhr && chrome.webRequest.OnHeadersReceivedOptions.EXTRA_HEADERS,
+      !__.MV3 && xhr && chrome.webRequest.OnHeadersReceivedOptions.EXTRA_HEADERS,
     ].filter(Boolean));
   }
   if (mv3init || off !== curOFF) {
@@ -130,36 +135,45 @@ function toggle(prefKey) {
 /** @type {typeof chrome.webRequest.onBeforeRequest.callback} */
 async function prepareStyles(req) {
   const {tabId, frameId, url} = req;
+  const key = tabId + ':' + frameId;
+  const bgPreInitLen = __.MV3 && bgPreInit.length;
+  __.DEBUGLOG('prepareStyles', key, req);
   if (tabId < 0) return;
-  if (bgPreInit.length) {
-    // bgPreInit in progress, let's join it
-    const jobs = [
+  let cached, unlock;
+  let lock = __.MV3 && bgPreInitLen && new Promise(resolve => (unlock = resolve));
+  if (bgPreInitLen) { // bgPreInit in progress, let's join it
+    bgPreInit.push(
       styleCache.loadOne(url),
-      frameId && tabMan.load(tabId),
-    ];
-    const i = bgPreInit.push(...jobs) - jobs.length;
-    const results = await Promise.all(bgPreInit);
-    const cached = results[i];
-    const tab = results[i + 1];
-    if (tab) req.tab = tab;
-    if (!cached) await bgBusy;
-  } else if (bgBusy) {
-    // bgPreInit done, bgInit in progress
+      frameId ? tabMan.load(tabId) : undefined,
+    );
+    const all = Promise.all(bgPreInit);
+    if (lock) bgPreInit.push(lock); // keeps bgBusy from resolving until we're done here
+    [cached, req.tab] = (await all).slice(bgPreInitLen);
+    __.DEBUGLOG('prepareStyles cache', key, cached);
+  }
+  if (!cached && bgBusy) {
+    if (lock) lock = unlock(); // set to undefined
     await bgBusy;
   }
-  const key = tabId + ':' + frameId;
   const oldData = toSend[key];
-  const data = oldData || (toSend[key] = {});
+  const data = oldData || {};
   const payload = data.payload = getSectionsByUrl.call({sender: req}, url, null, true);
   const willStyle = payload.sections.length;
   data.url = url;
   if (oldData) removePreloadedStyles(null, key, data, willStyle);
-  if (process.env.MV3 && curXHR && willStyle) prepareStylesMV3(req, data, key, payload);
+  if (__.MV3 && curXHR && willStyle) {
+    await prepareStylesMV3(tabId, frameId, url, data, key, payload);
+  }
+  toSend[key] = data;
+  if (lock) setTimeout(unlock);
+  __.DEBUGLOG('prepareStyles done', key, data);
 }
 
-async function prepareStylesMV3({tabId, frameId, url}, data, key, payload) {
+/** @returns {?} falsy = bgPreInit is not locked */
+async function prepareStylesMV3(tabId, frameId, url, data, key, payload) {
   let blobId;
   for (const k in toSend) {
+    if (key === k) continue;
     const val = toSend[k];
     if (val.url === url && deepEqual(payload, val.payload)) {
       setTimeout(removeTemporaryTab, REVOKE_TIMEOUT, tabId);
@@ -169,7 +183,7 @@ async function prepareStylesMV3({tabId, frameId, url}, data, key, payload) {
     }
   }
   if (!blobId) {
-    blobId = (await global.offscreen.createObjectURL(makeBlob(payload)))
+    blobId = (await offscreen.createObjectURL(makeBlob(payload)))
       .slice(BLOB_URL_PREFIX.length);
   }
   data.blobId = blobId;
@@ -182,7 +196,7 @@ async function prepareStylesMV3({tabId, frameId, url}, data, key, payload) {
   ruleIds[ruleId] = key;
   ruleIdKeys[key] = ruleId;
   timer ??= setTimeout(flushState);
-  updateSessionRules([{
+  await updateSessionRules([{
     id: ruleId,
     condition: {
       tabIds: [tabId],
@@ -201,7 +215,7 @@ function injectData(req) {
   const data = toSend[req2key(req)];
   if (data && !data.injected) {
     data.injected = true;
-    if (process.env.MV3) {
+    if (__.MV3) {
       chrome.scripting.executeScript({
         target: {tabId: req.tabId, frameIds: [req.frameId]},
         args: [data.payload],
@@ -241,10 +255,10 @@ function modifyHeaders(req) {
   let blobId;
   if (curXHR && (
     blobId = (data.blobId ??=
-      !process.env.MV3 && URL.createObjectURL(makeBlob(payload)).slice(BLOB_URL_PREFIX.length)
+      !__.MV3 && URL.createObjectURL(makeBlob(payload)).slice(BLOB_URL_PREFIX.length)
     ))) {
     blobId = makeXhrCookie(blobId);
-    if (!process.env.MV3 || !findHeader(responseHeaders, kSetCookie, blobId)) {
+    if (!__.MV3 || !findHeader(responseHeaders, kSetCookie, blobId)) {
       responseHeaders.push({name: kSetCookie, value: blobId});
     } else {
       blobId = false;
@@ -290,7 +304,7 @@ function patchCspSrc(src, name, ...values) {
 export function removePreloadedStyles(req, key = req2key(req), data = toSend[key], keep) {
   let v;
   if (data) {
-    if (!keep) delete toSend[key];
+    delete toSend[key];
     if ((v = data.blobId)) {
       if (req) setTimeout(revokeObjectURL, REVOKE_TIMEOUT, v);
       else revokeObjectURL(v);
@@ -300,7 +314,7 @@ export function removePreloadedStyles(req, key = req2key(req), data = toSend[key
       data.timer = clearTimeout(v);
     }
   }
-  if (process.env.MV3 && !keep && (data ? ruleIds[v = data.ruleId] : v = ruleIdKeys[key])) {
+  if (__.MV3 && !keep && (data ? ruleIds[v = data.ruleId] : v = ruleIdKeys[key])) {
     delete ruleIds[v];
     delete ruleIdKeys[key];
     timer ??= setTimeout(flushState);

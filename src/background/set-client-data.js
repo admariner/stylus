@@ -1,7 +1,7 @@
-import {kPopup} from '/js/consts';
-import {API} from '/js/msg';
-import * as prefs from '/js/prefs';
-import {FIREFOX} from '/js/ua';
+import {kPopup} from '@/js/consts';
+import {API} from '@/js/msg';
+import * as prefs from '@/js/prefs';
+import {FIREFOX} from '@/js/ua';
 import {isDark, setSystemDark} from './color-scheme';
 import {bgBusy, isVivaldi} from './common';
 import makePopupData from './popup-data';
@@ -14,13 +14,13 @@ import * as syncMan from './sync-manager';
 const RESPONSE_INIT = {
   headers: {'cache-control': 'no-cache'},
 };
-const ASSIGN_FUNC_STR = process.env.MV3 && `${function (data) {
-  Object.assign(this[process.env.CLIENT_DATA], data);
+const ASSIGN_FUNC_STR = __.MV3 && `${function (data) {
+  Object.assign(this[__.CLIENT_DATA], data);
 }}`;
 
-export default async function setClientData(reqParams, {
-  dark: pageDark = !!+reqParams.get('dark'),
-  url: pageUrl = reqParams.get('url'),
+export default async function setClientData({
+  dark: pageDark,
+  url: pageUrl,
 } = {}) {
   if (bgBusy) await bgBusy;
   let v, params;
@@ -46,7 +46,7 @@ export default async function setClientData(reqParams, {
         query: v,
         mode: params.get('searchMode') || prefs.__values['manage.searchMode'],
       }),
-    styles: process.env.MV3 ? styleMan.getCodelessStyles() : styleMan.getAll(),
+    styles: __.MV3 ? styleMan.getCodelessStyles() : styleMan.getAll(),
 
   } : page === 'options' ? /** @namespace StylusClientData */ {
     sync: (v = syncMan.getStatus()),
@@ -60,7 +60,7 @@ export default async function setClientData(reqParams, {
 
   v = await Promise.all(Object.values(jobs));
   Object.keys(jobs).forEach((id, i) => (jobs[id] = v[i]));
-  return process.env.MV3
+  return __.MV3
     ? new Response(`(${ASSIGN_FUNC_STR})(${JSON.stringify(jobs)})`, RESPONSE_INIT)
     : jobs;
 }

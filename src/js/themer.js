@@ -11,23 +11,26 @@ import {getCssMediaRuleByName} from './dom-util';
 import {onExtension} from './msg';
 import {clientData} from './prefs';
 import {MF_ICON_EXT, MF_ICON_PATH} from './util-webext';
-import '/css/global.css';
-import '/css/global-dark.css';
+import '@/css/global.css';
+import '@/css/global-dark.css';
 
+export const onDarkChanged = new Set();
 export const MEDIA_ON = 'screen';
 export const MEDIA_OFF = 'not all';
 const MEDIA_NAME = 'dark';
 const map = {[MEDIA_ON]: true, [MEDIA_OFF]: false};
 
+export let isDark;
+
 (async () => {
-  let isDark, favicon;
-  if (window === top) ({dark: isDark, favicon} = process.env.MV3 ? clientData : await clientData);
+  let favicon;
+  if (window === top) ({dark: isDark, favicon} = __.MV3 ? clientData : await clientData);
   else isDark = parent.document.documentElement.dataset.uiTheme === 'dark';
-  toggle(isDark, true);
+  updateDOM();
   onExtension(e => {
-    if (e.method === 'colorScheme') {
+    if (e.method === 'colorScheme' && isDark !== e.value) {
       isDark = e.value;
-      toggle(isDark);
+      updateDOM();
     }
   });
   if (favicon
@@ -41,12 +44,12 @@ const map = {[MEDIA_ON]: true, [MEDIA_OFF]: false};
   }
 })();
 
-function toggle(isDark, firstRun) {
+function updateDOM() {
   $.root.dataset.uiTheme = isDark ? 'dark' : 'light';
-  if (firstRun && !isDark) return;
   getCssMediaRuleByName(MEDIA_NAME, m => {
     if (map[m[0]] !== isDark) {
       m.mediaText = `${isDark ? MEDIA_ON : MEDIA_OFF},${MEDIA_NAME}`;
     }
   });
+  for (const fn of onDarkChanged) fn(isDark);
 }

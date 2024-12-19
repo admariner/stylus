@@ -1,6 +1,7 @@
-import * as prefs from '/js/prefs';
-import {debounce, isCssDarkScheme} from '/js/util';
-import {bgBusy, bgInit, bgPreInit, stateDB} from './common';
+import * as prefs from '@/js/prefs';
+import {debounce, isCssDarkScheme} from '@/js/util';
+import {broadcastExtension} from './broadcast';
+import {bgBusy, bgPreInit, stateDB} from './common';
 
 const changeListeners = new Set();
 const kSTATE = 'schemeSwitcher.enabled';
@@ -15,19 +16,19 @@ const map = {
   [kNever]: false,
   [kDark]: true,
   [kLight]: false,
-  [kSystem]: false,
+  [kSystem]: null,
   [kTime]: false,
 };
 export const SCHEMES = [kDark, kLight];
 /** @type {(val: !boolean) => void} */
 export const setSystemDark = update.bind(null, kSystem);
-export let isDark;
+export let isDark = null;
 let prefState;
 let flushing;
 
 chrome.alarms.onAlarm.addListener(onAlarm);
 
-if (process.env.MV3) {
+if (__.MV3) {
   bgPreInit.push(stateDB.get(kDark).then(v => {
     if (!v) {
       isDark = false;
@@ -36,9 +37,6 @@ if (process.env.MV3) {
       Object.assign(map, v[1]);
     }
   }));
-  bgInit.push(async () => {
-    setSystemDark(await global.offscreen.isDark());
-  });
 } else {
   setSystemDark(isCssDarkScheme());
 }
@@ -121,10 +119,11 @@ function update(type, val) {
   val = map[prefState];
   if (isDark !== val) {
     isDark = val;
+    broadcastExtension({method: 'colorScheme', value: isDark});
     for (const fn of changeListeners) fn(isDark);
-    if (process.env.MV3) type = true;
+    if (__.MV3) type = true;
   }
-  if (process.env.MV3 && type) {
+  if (__.MV3 && type) {
     flushing ??= setTimeout(flushState);
   }
 }

@@ -1,8 +1,8 @@
-import {API} from '/js/msg';
-import {STORAGE_KEY} from '/js/prefs';
-import {chromeLocal} from '/js/storage-util';
-import {CHROME} from '/js/ua';
-import {deepCopy} from '/js/util';
+import {API} from '@/js/msg';
+import {STORAGE_KEY} from '@/js/prefs';
+import {chromeLocal} from '@/js/storage-util';
+import {CHROME} from '@/js/ua';
+import {deepCopy} from '@/js/util';
 import ChromeStorageDB from './db-chrome-storage';
 
 /*
@@ -12,7 +12,7 @@ import ChromeStorageDB from './db-chrome-storage';
  https://www.reddit.com/r/firefox/comments/7ijuaq/firefox_59_webextensions_can_use_indexeddb_when/
 */
 
-let exec = process.env.BUILD === 'chrome' || CHROME
+let exec = __.BUILD === 'chrome' || CHROME
   ? dbExecIndexedDB
   : tryUsingIndexedDB;
 const DB = 'stylish';
