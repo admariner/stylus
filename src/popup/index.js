@@ -1,21 +1,23 @@
-import '/js/dom-init';
-import {kAboutBlank, kPopup, UCD} from '/js/consts';
-import {$, $$, $create, $remove} from '/js/dom';
-import {getEventKeyName, setupLivePrefs} from '/js/dom-util';
-import {t, template} from '/js/localization';
-import {API, onExtension} from '/js/msg';
-import * as prefs from '/js/prefs';
-import {CHROME, FIREFOX, MOBILE, OPERA} from '/js/ua';
-import {ownRoot} from '/js/urls';
-import {capitalize, clamp, clipString, isEmptyObj, sleep, stringAsRegExpStr} from '/js/util';
-import {CHROME_POPUP_BORDER_BUG, getActiveTab, MF} from '/js/util-webext';
+import '@/js/dom-init';
+import {kAboutBlank, kPopup, UCD} from '@/js/consts';
+import {$, $$, $create, $remove} from '@/js/dom';
+import {getEventKeyName, setupLivePrefs} from '@/js/dom-util';
+import {t, template} from '@/js/localization';
+import {API, onExtension} from '@/js/msg';
+import * as prefs from '@/js/prefs';
+import {isDark, onDarkChanged} from '@/js/themer';
+import {CHROME, FIREFOX, MOBILE, OPERA} from '@/js/ua';
+import {ownRoot} from '@/js/urls';
+import {capitalize, clamp, clipString, isEmptyObj, sleep, stringAsRegExpStr} from '@/js/util';
+import {CHROME_POPUP_BORDER_BUG, getActiveTab, MF} from '@/js/util-webext';
 import * as Events from './events';
 import './hotkeys';
-import '/css/onoffswitch.css';
+import '@/css/onoffswitch.css';
 import './popup.css';
 
 export const styleFinder = {};
-export let tabURL;
+export let tabUrl;
+export let tabUrlSupported;
 let isBlocked;
 
 /** @type Element */
@@ -27,7 +29,7 @@ const xo = new IntersectionObserver(onIntersect);
 export const $entry = styleOrId => $(`#${ENTRY_ID_PREFIX_RAW}${styleOrId.id || styleOrId}`);
 
 (async () => {
-  const data = (process.env.MV3 ? prefs.clientData : await prefs.clientData)[kPopup];
+  const data = (__.MV3 ? prefs.clientData : await prefs.clientData)[kPopup];
   initPopup(...data);
   showStyles(...data);
   if (!MOBILE) window.on('resize', onWindowResize);
@@ -35,24 +37,28 @@ export const $entry = styleOrId => $(`#${ENTRY_ID_PREFIX_RAW}${styleOrId.id || s
 
 onExtension(onRuntimeMessage);
 
+updateStateIcon(isDark);
+onDarkChanged.add(val => updateStateIcon(val, null));
+
 prefs.subscribe('popup.stylesFirst', (key, stylesFirst) => {
   $.rootCL.toggle('styles-first', stylesFirst);
   $.rootCL.toggle('styles-last', !stylesFirst);
 }, true);
 prefs.subscribe('disableAll', (key, val) => {
-  global[key].title = t('masterSwitch') + ':\n' +
+  updateStateIcon(null, val);
+  $('#disableAll-label').title = t('masterSwitch') + ':\n' +
     t(val ? 'disableAllStylesOff' : 'genericEnabledLabel');
 }, true);
-if (!process.env.MV3 && process.env.BUILD !== 'firefox' && CHROME_POPUP_BORDER_BUG) {
+if (!__.MV3 && __.BUILD !== 'firefox' && CHROME_POPUP_BORDER_BUG) {
   prefs.subscribe('popup.borders', toggleSideBorders, true);
 }
-if (!process.env.MV3 && CHROME >= 66 && CHROME <= 69) {
+if (!__.MV3 && CHROME >= 66 && CHROME <= 69) {
   // Chrome 66-69 adds a gap, https://crbug.com/821143
   $.root.style.overflow = 'overlay';
 }
 
 function onRuntimeMessage(msg) {
-  if (!tabURL) return;
+  if (!tabUrl) return;
   let ready;
   switch (msg.method) {
     case 'styleAdded':
@@ -124,7 +130,8 @@ async function initPopup(frames, ping0, tab, urlSupported) {
     el.removeAttribute('media');
   }
 
-  tabURL = frames[0].url;
+  tabUrl = frames[0].url;
+  tabUrlSupported = urlSupported;
   frames.forEach(createWriterElement);
 
   if ($('.match .match:not(.dupe),' + WRITE_FRAME_SEL)) {
@@ -138,10 +145,10 @@ async function initPopup(frames, ping0, tab, urlSupported) {
 
   if (ping0) return;
 
-  const isStore = FIREFOX ? tabURL.startsWith('https://addons.mozilla.org/') :
-      OPERA ? tabURL.startsWith('https://addons.opera.com/') :
-        tabURL.startsWith('https://chrome.google.com/webstore/') ||
-        tabURL.startsWith('https://chromewebstore.google.com/');
+  const isStore = FIREFOX ? tabUrl.startsWith('https://addons.mozilla.org/') :
+      OPERA ? tabUrl.startsWith('https://addons.opera.com/') :
+        tabUrl.startsWith('https://chrome.google.com/webstore/') ||
+        tabUrl.startsWith('https://chromewebstore.google.com/');
   blockPopup();
   if (CHROME && isStore || !urlSupported) {
     return;
@@ -184,7 +191,7 @@ async function initPopup(frames, ping0, tab, urlSupported) {
     info.appendChild(noteNode);
   }
   // Inaccessible locally hosted file type, e.g. JSON, PDF, etc.
-  if (tabURL.length - tabURL.lastIndexOf('.') <= 5) {
+  if (tabUrl.length - tabUrl.lastIndexOf('.') <= 5) {
     info.appendChild($create('p', t('InaccessibleFileHint')));
   }
   document.body.classList.add('unreachable');
@@ -198,7 +205,8 @@ async function initPopup(frames, ping0, tab, urlSupported) {
  * @param {number} index - provided by forEach
  */
 function createWriterElement(frame, index) {
-  const {url, frameId, parentFrameId, isDupe} = frame;
+  const {frameId, parentFrameId, isDupe} = frame;
+  const url = tabUrlSupported || frameId ? frame.url : 'https://www.example.com/abcd';
   const isAbout = url.startsWith('about:');
   const crumbs = [];
   if (!url) return;
@@ -349,7 +357,7 @@ function onIntersect(results) {
 async function handleUpdate({style, reason}) {
   const entry = $entry(style);
   if (reason !== 'toggle' || !entry) {
-    [style] = await API.styles.getByUrl(tabURL, style.id);
+    [style] = await API.styles.getByUrl(tabUrl, style.id);
     if (!style) return;
     style = Object.assign(style.style, style);
   }
@@ -361,5 +369,12 @@ async function handleUpdate({style, reason}) {
 function blockPopup(val = true) {
   isBlocked = val;
   $.rootCL.toggle('blocked', isBlocked);
-  $('#write-wrapper').classList.toggle('hidden', !$(WRITE_FRAME_SEL));
+}
+
+function updateStateIcon(newDark, newDisabled) {
+  const el = $('#disableAll-label img');
+  let srcset = el.srcset;
+  if (newDark != null) srcset = srcset.replace(/\/\D*/g, newDark ? '/' : '/light/');
+  if (newDisabled != null) srcset = srcset.replace(/x?\./g, newDisabled ? 'x.' : '.');
+  el.srcset = srcset;
 }

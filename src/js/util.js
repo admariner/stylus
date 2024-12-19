@@ -9,6 +9,7 @@ export const clamp = (value, min, max) => value < min ? min : value > max ? max 
 export const clipString = (str, limit = 100) => str.length > limit
   ? str.substr(0, limit) + '...'
   : str;
+export const getHost = url => url.split('/', 3)[2];
 export const hasOwn = /*@__PURE__*/Object.call.bind({}.hasOwnProperty);
 /** FYI, matchMedia's onchange doesn't work in bg context, so we use it in our content script */
 export const isCssDarkScheme = () => matchMedia('(prefers-color-scheme:dark)').matches;
@@ -36,8 +37,8 @@ export const debounce = /*@__PURE__*/(() => {
     }
     old.args = args;
     old.time = t;
-    old.timer = setTimeout(run, delay, fn, args, process.env.ENTRY === 'sw' && delay && (
-      old[kResolve] = process.env.KEEP_ALIVE(promiseWithResolve())[kResolve]
+    old.timer = setTimeout(run, delay, fn, args, __.ENTRY === 'sw' && delay && (
+      old[kResolve] = __.KEEP_ALIVE(promiseWithResolve())[kResolve]
     ));
   }, {
     timers,
@@ -52,11 +53,11 @@ export const debounce = /*@__PURE__*/(() => {
   });
   function clearTimer(data) {
     clearTimeout(data.timer);
-    if (process.env.ENTRY === 'sw' && (data = data[kResolve])) data();
+    if (__.ENTRY === 'sw' && (data = data[kResolve])) data();
   }
   async function run(fn, args, resolve) {
     timers.delete(fn);
-    if (process.env.ENTRY === 'sw' && resolve) resolve(fn(...args));
+    if (__.ENTRY === 'sw' && resolve) resolve(fn(...args));
     else fn(...args);
   }
 })();

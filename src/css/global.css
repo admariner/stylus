@@ -150,6 +150,10 @@ i {
   font-size: 16px;
 }
 
+input[type="range"] {
+  accent-color: hsl(180, 45%, 40%);
+}
+
 input[type="checkbox"]:not(.slider) {
   &:checked::after {
     content: '☑';
@@ -312,6 +316,7 @@ html:not(.all-disabled) {
   #disableAll-label {
     font-weight: bold;
     color: var(--red1);
+    display: inline-flex;
     &::after {
       content: attr(data-off);
     }

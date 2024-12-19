@@ -1,24 +1,25 @@
-import {kResolve, kStateDB} from '/js/consts';
-import {CHROME} from '/js/ua';
-import {promiseWithResolve} from '/js/util';
-import {browserWindows} from '/js/util-webext';
+import {kResolve, kStateDB} from '@/js/consts';
+import {CHROME} from '@/js/ua';
+import {promiseWithResolve} from '@/js/util';
+import {browserWindows} from '@/js/util-webext';
 import {getDbProxy} from './db';
 
 export let bgBusy = promiseWithResolve();
 /** Minimal init for a wake-up event */
 export const bgPreInit = [];
 export const bgInit = [];
+export const clientDataJobs = {};
 
-export const safeTimeout = process.env.ENTRY === 'sw'
+export const safeTimeout = __.ENTRY === 'sw'
   ? (fn, delay, ...args) =>
     setTimeout(safeTimeoutResolve, delay, fn, args,
-      process.env.KEEP_ALIVE(promiseWithResolve())[kResolve])
+      __.KEEP_ALIVE(promiseWithResolve())[kResolve])
   : setTimeout;
 
-const safeTimeoutResolve = process.env.ENTRY === 'sw'
+const safeTimeoutResolve = __.ENTRY === 'sw'
   && ((fn, args, resolve) => resolve(fn(...args)));
 
-export const stateDB = process.env.MV3 && getDbProxy(kStateDB, {store: 'kv'});
+export const stateDB = __.MV3 && getDbProxy(kStateDB, {store: 'kv'});
 
 export const uuidIndex = Object.assign(new Map(), {
   custom: {},
@@ -40,3 +41,10 @@ export let isVivaldi = !!(browserWindows && CHROME) && (async () => {
 
 window._busy = bgBusy;
 bgBusy.then(() => (bgBusy = null));
+if (__.DEBUG) {
+  bgPreInit.push = (...args) => {
+    const {stack} = new Error();
+    for (const a of args) a._stack = stack;
+    return [].push.apply(bgPreInit, args);
+  };
+}

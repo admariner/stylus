@@ -1,7 +1,7 @@
-import {UCD} from '/js/consts';
-import {API} from '/js/msg';
-import * as URLS from '/js/urls';
-import {fetchText, RX_META} from '/js/util';
+import {UCD} from '@/js/consts';
+import {API} from '@/js/msg';
+import * as URLS from '@/js/urls';
+import {fetchText, RX_META} from '@/js/util';
 import download from './download';
 import * as styleMan from './style-manager';
 
@@ -36,7 +36,7 @@ export function pingback(usoId, delay) {
   clearTimeout(pingers[usoId]);
   delete pingers[usoId];
   if (delay > 0) {
-    return process.env.KEEP_ALIVE(new Promise(resolve => (
+    return __.KEEP_ALIVE(new Promise(resolve => (
       pingers[usoId] = setTimeout(ping, delay, usoId, resolve)
     )));
   }

@@ -1,19 +1,20 @@
-import '/js/browser';
-import {kContentType, kMainFrame} from '/js/consts';
-import {DNR_ID_INSTALLER, updateDynamicRules} from '/js/dnr';
-import * as prefs from '/js/prefs';
-import * as URLS from '/js/urls';
-import {RX_META} from '/js/util';
-import {FIREFOX} from '/js/ua';
+import '@/js/browser';
+import {kContentType, kMainFrame} from '@/js/consts';
+import {DNR_ID_INSTALLER, updateDynamicRules} from '@/js/dnr';
+import * as prefs from '@/js/prefs';
+import * as URLS from '@/js/urls';
+import {getHost, RX_META} from '@/js/util';
+import {FIREFOX} from '@/js/ua';
 import {bgBusy, safeTimeout} from './common';
 import download from './download';
 import * as tabMan from './tab-manager';
 import {openURL} from './tab-util';
 
 const installCodeCache = {};
+export const kUrlInstaller = 'urlInstaller';
 
 bgBusy.then(() => {
-  prefs.subscribe('urlInstaller', toggle, true);
+  prefs.subscribe(kUrlInstaller, toggle, true);
 });
 
 export function getInstallCode(url) {
@@ -24,9 +25,13 @@ export function getInstallCode(url) {
   return code;
 }
 
-function toggle(key, val) {
+function toggle(key, val, isInit) {
   if (val) tabMan.onUrl.add(maybeInstall);
   else tabMan.onUrl.delete(maybeInstall);
+  if (!__.MV3 || !isInit) toggleUrlInstaller(val);
+}
+
+export function toggleUrlInstaller(val) {
   const urls = val ? [''] : [
     /* Known distribution sites where we ignore urlInstaller option, because
        they open .user.css URL only when the "Install" button is clicked.
@@ -35,7 +40,7 @@ function toggle(key, val) {
     ...URLS.usoaRaw,
     ...['greasy', 'sleazy'].map(h => `https://update.${h}fork.org/`),
   ];
-  if (process.env.MV3) {
+  if (__.MV3) {
     updateDynamicRules([{
       id: DNR_ID_INSTALLER,
       condition: {
@@ -44,7 +49,7 @@ function toggle(key, val) {
           : /^.*\.user\.css$/).source,
         requestDomains: val
           ? undefined
-          : [...new Set(urls.map(u => u.split('/')[2]))],
+          : [...new Set(urls.map(getHost))],
         resourceTypes: [kMainFrame],
         responseHeaders: [{
           header: kContentType,
@@ -69,7 +74,7 @@ function toggle(key, val) {
 }
 
 function clearInstallCode(url) {
-  return delete installCodeCache[url];
+  delete installCodeCache[url];
 }
 
 /** Ignoring .user.css response that is not a plain text but a web page.
@@ -81,7 +86,7 @@ function isContentTypeText(type) {
 // in Firefox we have to use a content script to read file://
 async function loadFromFile(tabId) {
   return (await browser.tabs.executeScript(tabId, {
-    file: `/${process.env.JS}install-hook-usercss.js`,
+    file: `/${__.JS}install-hook-usercss.js`,
   }))[0];
 }
 

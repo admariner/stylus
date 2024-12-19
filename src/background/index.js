@@ -1,12 +1,13 @@
 import './intro';
-import '/js/browser';
-import {kResolve} from '/js/consts';
-import {DNR, getRuleIds, updateDynamicRules, updateSessionRules} from '/js/dnr';
-import {_execute, API, onMessage} from '/js/msg';
-import {createPortProxy} from '/js/port';
-import * as prefs from '/js/prefs';
-import {CHROME, FIREFOX, MOBILE, WINDOWS} from '/js/ua';
-import {workerPath} from '/js/urls';
+import '@/js/browser';
+import {kInstall, kResolve} from '@/js/consts';
+import {DNR, getRuleIds, updateDynamicRules, updateSessionRules} from '@/js/dnr';
+import {_execute, API, onMessage} from '@/js/msg';
+import {createPortProxy} from '@/js/port';
+import * as prefs from '@/js/prefs';
+import {CHROME, FIREFOX, MOBILE, WINDOWS} from '@/js/ua';
+import {workerPath} from '@/js/urls';
+import {sleep} from '@/js/util';
 import {broadcast, pingTab} from './broadcast';
 import './broadcast-injector-config';
 import initBrowserCommandsApi from './browser-cmd-hotkeys';
@@ -15,7 +16,7 @@ import {bgBusy, bgInit, bgPreInit, stateDB} from './common';
 import reinjectContentScripts from './content-scripts';
 import initContextMenus from './context-menus';
 import download from './download';
-import {updateIconBadge} from './icon-manager';
+import {refreshIconsWhenReady, updateIconBadge} from './icon-manager';
 import prefsApi from './prefs-api';
 import setClientData from './set-client-data';
 import * as styleMan from './style-manager';
@@ -72,38 +73,53 @@ Object.assign(API, /** @namespace API */ {
 
   //#endregion
 
-}, !process.env.MV3 && /** @namespace API */ {
+}, !__.MV3 && /** @namespace API */ {
 
   //#region API for MV2
 
   setClientData,
-  /** @type {BackgroundWorker} */
+  /** @type {WorkerAPI} */
   worker: createPortProxy(workerPath),
 
   //#endregion
 
-}, process.env.BUILD !== 'chrome' && FIREFOX && initStyleViaApi());
+}, __.BUILD !== 'chrome' && FIREFOX && initStyleViaApi());
 
 //#region Events
 
 chrome.runtime.onInstalled.addListener(({reason, previousVersion}) => {
-  if (process.env.BUILD !== 'firefox' && CHROME) {
+  if (__.BUILD !== 'firefox' && CHROME) {
     reinjectContentScripts();
     initContextMenus();
   }
-  if (reason === 'install') {
+  if (reason === kInstall) {
     if (MOBILE) prefs.set('manage.newUI', false);
     if (WINDOWS) prefs.set('editor.keyMap', 'sublime');
   }
   if (previousVersion === '1.5.30') {
     API.prefsDb.delete('badFavs'); // old Stylus marked all icons as bad when network was offline
   }
-  if (process.env.MV3) {
+  if (__.MV3) {
     bgPreInit.push(
       stateDB.clear(),
       DNR.getDynamicRules().then(rules => updateDynamicRules(undefined, getRuleIds(rules))),
       DNR.getSessionRules().then(rules => updateSessionRules(undefined, getRuleIds(rules))),
     );
+    refreshIconsWhenReady();
+    (async () => {
+      if (bgBusy) await bgBusy;
+      if (prefs.__values[usercssMan.kUrlInstaller]) usercssMan.toggleUrlInstaller(true);
+    })();
+  }
+});
+
+chrome.runtime.onStartup.addListener(async () => {
+  await refreshIconsWhenReady();
+  await sleep(1000);
+  const minDate = Date.now() - 30 * 24 * 60e3;
+  for (const id of await API.drafts.getAllKeys()) {
+    const {date} = await API.drafts.get(id) || {};
+    if (date < minDate) API.drafts.delete(id);
   }
 });
 
@@ -127,12 +143,12 @@ onMessage(async (m, sender) => {
   bgPreInit.length = 0;
   await Promise.all(bgInit.map(v => typeof v === 'function' ? v() : v));
   bgBusy[kResolve]();
-  if (process.env.BUILD !== 'chrome' && FIREFOX) {
+  if (__.BUILD !== 'chrome' && FIREFOX) {
     initBrowserCommandsApi();
-  }
-  if (!process.env.MV3) {
-    window._msgExec = _execute;
     initContextMenus();
+  }
+  if (!__.MV3) {
+    window._msgExec = _execute;
     broadcast({method: 'backgroundReady'});
   }
 })();
