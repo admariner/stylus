@@ -1,4 +1,4 @@
-import {db as styleDB, getDbProxy} from './db';
+import {db as styleDB, getDbProxy} from '../db';
 
 let onDeleted;
 let timer;
@@ -51,12 +51,17 @@ export async function loadAll() {
 export function hydrate(dataMap) {
   const toDel = [];
   for (const val of values()) {
-    for (const id in ensureSections(val)) {
-      const data = dataMap.get(+id);
-      if (!data || !make(val, data.style)) {
-        toDel.push(val);
-        break;
+    try {
+      for (const id in ensureSections(val)) {
+        const data = dataMap.get(+id);
+        if (!data || !make(val, data.style)) {
+          toDel.push(val);
+          break;
+        }
       }
+    } catch (e) {
+      toDel.push(val);
+      console.error(e, val);
     }
   }
   if (toDel[0]) del(toDel);
@@ -70,7 +75,7 @@ export function ensureSections(entry) {
 export function make(entry, style, idx, code) {
   const id = style.id;
   const entrySections = entry.sections;
-  if (idx || !(idx = entrySections[id]).idx) {
+  if (idx || (idx = entrySections[id]) && !idx.idx) {
     if (!code) {
       code = [];
       for (const i of idx) {
@@ -86,7 +91,7 @@ export function make(entry, style, idx, code) {
       name: style.customName || style.name,
     };
   }
-  return true;
+  return !!idx;
 }
 
 export function setOnDeleted(fn) {
@@ -139,5 +144,5 @@ function prune() {
       100 * (a1 - b1) +
       10 * ((b2 - b1) - (a2 - a1)) +
       a2 - b2)
-    .slice(0, MAX * .25));
+    .slice(0, 10));
 }

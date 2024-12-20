@@ -1,14 +1,16 @@
-import '/js/browser';
-import * as chromeSync from '/js/chrome-sync';
-import * as prefs from '/js/prefs';
-import {chromeLocal} from '/js/storage-util';
-import {fetchWebDAV, hasOwn} from '/js/util';
+import '@/js/browser';
+import * as chromeSync from '@/js/chrome-sync';
+import * as prefs from '@/js/prefs';
+import {chromeLocal} from '@/js/storage-util';
+import {fetchWebDAV, hasOwn} from '@/js/util';
 import {broadcastExtension} from './broadcast';
 import {uuidIndex} from './common';
 import {db} from './db';
 import {cloudDrive, dbToCloud} from './db-to-cloud-broker';
 import {overrideBadge} from './icon-manager';
 import * as styleMan from './style-manager';
+import {onSaved} from './style-manager/fixer';
+import {getByUuid} from './style-manager/util';
 import * as STATES from './sync-manager-states';
 import {getToken, revokeToken} from './token-manager';
 
@@ -46,7 +48,7 @@ let scheduling;
 let syncingNow;
 
 chrome.alarms.onAlarm.addListener(a => {
-  if (a.name === ALARM_ID) process.env.KEEP_ALIVE(syncNow());
+  if (a.name === ALARM_ID) __.KEEP_ALIVE(syncNow());
 });
 prefs.subscribe(PREF_ID, schedule, true);
 
@@ -170,7 +172,7 @@ export async function syncNow() {
       status.login = false;
     }
   }
-  if (process.env.MV3 && resolveOnSync) {
+  if (__.MV3 && resolveOnSync) {
     resolveOnSync();
     resolveOnSync = null;
   }
@@ -183,7 +185,7 @@ export async function syncNow() {
 
 function initController() {
   return dbToCloud({
-    onGet: _id => styleMan.uuid2style(_id) || uuidIndex.custom[_id],
+    onGet: _id => getByUuid(_id) || uuidIndex.custom[_id],
     async onPut(doc) {
       if (!doc) return; // TODO: delete it?
       const id = uuidIndex.get(doc._id);
@@ -199,7 +201,7 @@ function initController() {
         delete doc.id;
         if (id) doc.id = id;
         doc.id = await db.put(doc);
-        await styleMan.handleSave(doc, 'sync');
+        await onSaved(doc, 'sync');
       }
     },
     onDelete(_id, rev) {
@@ -278,8 +280,8 @@ async function getDrive(name) {
   if (!hasOwn(cloudDrive, name)) throw new Error(`Unknown cloud provider: ${name}`);
   const opts = await getDriveOptions(name);
   const webdav = name === 'webdav';
-  if (!process.env.MV3 || !webdav) opts.getAccessToken = () => getToken(name);
-  if (!process.env.MV3 && webdav) opts.fetch = fetchWebDAV.bind(opts);
+  if (!__.MV3 || !webdav) opts.getAccessToken = () => getToken(name);
+  if (!__.MV3 && webdav) opts.fetch = fetchWebDAV.bind(opts);
   return cloudDrive[name](opts);
 }
 
@@ -302,8 +304,8 @@ async function schedule(isInit, prefVal = curDriveName) {
       delayInMinutes: isInit ? SYNC_INIT_DELAY : SYNC_DELAY,
       periodInMinutes: SYNC_INTERVAL,
     });
-    if (process.env.MV3 && !resolveOnSync) {
-      process.env.KEEP_ALIVE(new Promise(cb => (resolveOnSync = cb)));
+    if (__.MV3 && !resolveOnSync) {
+      __.KEEP_ALIVE(new Promise(cb => (resolveOnSync = cb)));
     }
   }
   scheduling = false;

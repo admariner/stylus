@@ -1,8 +1,8 @@
-import '/js/browser';
-import * as prefs from '/js/prefs';
-import {FIREFOX} from '/js/ua';
-import {sessionStore, tryJSONparse} from '/js/util';
-import {browserWindows, getOwnTab} from '/js/util-webext';
+import '@/js/browser';
+import * as prefs from '@/js/prefs';
+import {FIREFOX} from '@/js/ua';
+import {sessionStore, tryJSONparse} from '@/js/util';
+import {browserWindows, getOwnTab} from '@/js/util-webext';
 import editor from './editor';
 import EmbeddedPopup from './embedded-popup';
 
@@ -31,7 +31,7 @@ async function initWindowedMode() {
   if (isSimple) EmbeddedPopup();
   editor.isWindowed = isSimple || (
     history.length === 1 &&
-    (process.env.MV3 || await prefs.ready, prefs.get('openEditInWindow')) &&
+    (__.MV3 || await prefs.ready, prefs.get('openEditInWindow')) &&
     (await browserWindows.getAll()).length > 1 &&
     (await browser.tabs.query({currentWindow: true})).length === 1
   );

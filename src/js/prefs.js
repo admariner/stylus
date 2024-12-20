@@ -1,16 +1,17 @@
 /** Don't use this file in content script context! */
+import {k_busy} from '@/js/consts';
 import {API} from './msg-api';
 import {deepCopy, deepEqual, isCssDarkScheme, makePropertyPopProxy} from './util';
 import {onStorageChanged} from './util-webext';
 import './msg-init'; // installs direct `API` handler
 
-let busy, setReady;
+let busy, ready, setReady;
 
 /** @type {StylusClientData & {then: (cb: (data: StylusClientData) => ?) => Promise}} */
-export const clientData = !process.env.IS_BG && (
-  process.env.MV3
-    ? global[process.env.CLIENT_DATA]
-    : API.setClientData(null, {url: location.href, dark: isCssDarkScheme()}).then(data => {
+export const clientData = !__.IS_BG && (
+  __.MV3
+    ? global[__.CLIENT_DATA]
+    : API.setClientData({url: location.href, dark: isCssDarkScheme()}).then(data => {
       data = makePropertyPopProxy(data);
       setAll(data.prefs);
       return data;
@@ -35,7 +36,7 @@ const defaults = {
   'patchCsp': false,              // add data: and popular image hosting sites to strict CSP
   'show-badge': true,             // display text on popup menu icon
   'styleViaASS': false,           // document.adoptedStyleSheets
-  'styleViaXhr': true,            // early style injection to avoid FOUC
+  'styleViaXhr': false,           // early style injection to avoid FOUC
   'urlInstaller': true,           // auto-open installer page for supported .user.css urls
   'windowPosition': {},           // detached window position
 
@@ -158,6 +159,7 @@ const defaults = {
 const warnUnknown = console.warn.bind(console, 'Unknown preference "%s"');
 /** @type {PrefsValues} */
 const values = deepCopy(defaults);
+/** @type {Record<string, Set<function>>} */
 const onChange = {};
 
 export const STORAGE_KEY = 'settings';
@@ -185,9 +187,8 @@ export let set = (key, val, isSynced) => {
   }
   if (val === old || type === 'object' && deepEqual(val, old)) return;
   values[key] = val;
-  const fns = onChange[key];
-  if (fns) for (const fn of fns) fn(key, val);
-  if (!isSynced && !process.env.IS_BG) API.prefs.set(key, val);
+  if (!global[k_busy] || !__.IS_BG) onChange[key]?.forEach(fn => fn(key, val));
+  if (!isSynced && !__.IS_BG) API.prefs.set(key, val);
   /* browser.storage is slow and can randomly lose values if the tab was closed immediately,
    so we're sending the value to the background script which will save it to the storage;
    the extra bonus is that invokeAPI is immediate in extension tabs. */
@@ -214,7 +215,7 @@ export const subscribe = (keys, fn, runNow) => {
     if (!(key in defaults)) { warnUnknown(key); continue; }
     (onChange[key] ??= new Set()).add(fn);
     if (runNow) {
-      if (!busy) fn(key, values[key]);
+      if (!busy) fn(key, values[key], true);
       else (toRun ??= []).push(key);
     }
   }
@@ -247,19 +248,19 @@ function setAll(data, fromStorage) {
   }
   // setting current value + deleting from the source if it's unchanged (for prefs-api.js)
   for (const key in data || (data = {})) {
-    if (!set(key, data[key], true)) if (process.env.IS_BG) delete data[key];
+    if (!set(key, data[key], true)) if (__.IS_BG) delete data[key];
   }
 }
 
-if (process.env.IS_BG) {
-  busy = new Promise(cb => (setReady = cb));
+if (__.IS_BG) {
+  busy = ready = new Promise(cb => (setReady = cb));
   busy.set = (...args) => setReady(setAll(...args));
-} else if (process.env.MV3) {
+} else if (__.MV3) {
   setAll(clientData.prefs);
-  busy = Promise.resolve();
-  busy.then = fn => fn(); // run synchronously in the same microtick because the data is ready
+  ready = Promise.resolve();
+  ready.then = fn => fn(); // run synchronously in the same microtick because the data is ready
 } else {
-  busy = clientData;
+  busy = ready = clientData;
 }
 
 onStorageChanged.addListener((changes, area) => {
@@ -269,7 +270,7 @@ onStorageChanged.addListener((changes, area) => {
 });
 
 export {
-  busy as ready,
+  ready,
   defaultsClone as defaults,
   defaults as __defaults, // direct reference, be careful!
   values as __values, // direct reference, be careful!

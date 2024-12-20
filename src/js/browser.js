@@ -1,6 +1,9 @@
-if (process.env.MV3) {
+const origListeners = __.DEBUG && new WeakMap();
+
+if (__.MV3) {
   global.browser = chrome;
-} else if (process.env.BUILD !== 'firefox' && !global.browser?.runtime) {
+  if (__.DEBUG) addEventLogger();
+} else if (__.BUILD !== 'firefox' && !global.browser?.runtime) {
   /* Auto-promisifier with a fallback to direct call on signature error.
      The fallback isn't used now since we call all synchronous methods via `chrome` */
   const directEvents = ['addListener', 'removeListener', 'hasListener', 'hasListeners'];
@@ -45,6 +48,8 @@ if (process.env.MV3) {
     let res = src[key];
     if (res && typeof res === 'object') {
       res = createProxy(res, key);
+    } else if (typeof res === 'function' && key.endsWith('Listener') && __.DEBUG) {
+      res = patchEventListener(src, key, res);
     } else if (typeof res === 'function') {
       res = (srcName.startsWith('on') ? directEvents : directMethods[srcName] || []).includes(key)
         ? res.bind(src)
@@ -60,9 +65,11 @@ if (process.env.MV3) {
       },
     });
   global.browser = createProxy(chrome);
+} else if (__.DEBUG) {
+  addEventLogger();
 }
 
-if (!process.env.MV3 && !DOMTokenList.prototype.replace) {
+if (!__.MV3 && !DOMTokenList.prototype.replace) {
   // TODO: remove when minimum_chrome_version >= 61
   global.URLSearchParams = class extends URLSearchParams {
     constructor(init) {
@@ -76,4 +83,59 @@ if (!process.env.MV3 && !DOMTokenList.prototype.replace) {
       }
     }
   };
+}
+
+function addEventLogger() {
+  const patched = new WeakSet();
+  const handler = {
+    get(obj, k) {
+      let val = obj[k];
+      if (val && typeof val === 'object' && !patched.has(val)) {
+        patched.add(val);
+        let hasEvents, evt, fn;
+        for (k in val) {
+          if (k.startsWith('on') && (evt = val[k]) && typeof evt === 'object') {
+            for (const ke in evt) {
+              if (ke.endsWith('Listener') && typeof (fn = evt[ke]) === 'function') {
+                evt[ke] = patchEventListener(evt, k, fn);
+              }
+            }
+            hasEvents = true;
+          }
+        }
+        if (!hasEvents) val = new Proxy(val, handler);
+      }
+      return val;
+    },
+  };
+  if (chrome === browser) {
+    global.chrome = global.browser = new Proxy(chrome, handler);
+  } else {
+    global.chrome = new Proxy(chrome, handler);
+    global.browser = new Proxy(browser, handler);
+  }
+}
+
+function patchEventListener(obj, name, fn) {
+  let res = fn;
+  switch (fn.name) {
+    case 'addListener':
+      res = (cb, ...opts) =>
+        fn.call(obj, (...args) => {
+          console.log(name, ...args);
+          return cb(...args);
+        }, ...opts);
+      origListeners.set(fn, res);
+      break;
+    case 'removeListener':
+      res = cb => {
+        fn.call(obj, origListeners.get(cb));
+        origListeners.delete(cb);
+      };
+      break;
+    case 'hasListener':
+      res = cb => fn.call(obj, origListeners.get(cb));
+      break;
+  }
+  return res;
 }

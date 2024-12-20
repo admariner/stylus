@@ -1,8 +1,8 @@
-import {loadCmTheme} from '/cm';
-import {$} from '/js/dom';
-import * as prefs from '/js/prefs';
-import * as MozDocMapper from '/js/sections-util';
-import {clipString, sessionStore, tryURL} from '/js/util';
+import {loadCmTheme} from '@/cm';
+import {$} from '@/js/dom';
+import * as prefs from '@/js/prefs';
+import * as MozDocMapper from '@/js/sections-util';
+import {clipString, sessionStore, tryURL} from '@/js/util';
 import editor from './editor';
 
 if (location.hash) { // redirected from devtools -> "open in a new tab"
@@ -12,7 +12,7 @@ if (location.hash) { // redirected from devtools -> "open in a new tab"
 const params = new URLSearchParams(location.search);
 let id = +params.get('id');
 
-export default process.env.MV3
+export default __.MV3
   ? loadStyle(prefs.clientData)
   : prefs.clientData.then(loadStyle);
 

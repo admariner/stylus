@@ -1,3 +1,25 @@
+declare var __: {
+  API: 'API',
+  BUILD: 'DEV' | 'chrome' | 'firefox',
+  CLIENT_DATA: 'clientData',
+  CM_PATH: string,
+  /** bit mask, 1: general, 2: port, 4: life (keepAlive) */
+  DEBUG: number,
+  DEBUGLOG: typeof console.log,
+  DEBUGTRACE: typeof console.trace,
+  DEBUGWARN: typeof console.warn,
+  DEV: boolean,
+  ENTRY: 'offscreen' | 'sw' | 'worker' | string | boolean,
+  IS_BG: boolean,
+  JS: string,
+  KEEP_ALIVE: <T>(job: T) => T,
+  MV3: boolean,
+  PAGE_BG: 'background' | 'sw',
+  PAGE_OFFSCREEN: 'offscreen',
+  THEMES: Record<string, string>,
+  ZIP: boolean,
+}
+
 declare interface StyleObj {
   enabled: boolean;
   id: number;
@@ -80,6 +102,14 @@ declare interface InjectionOrder {
 
 declare interface InjectionOrderGroup {
   [id: string]: number;
+}
+
+declare interface MatchQuery {
+  url: string;
+  domain?: string;
+  isOwnPage?: boolean;
+  urlWithoutHash?: string;
+  urlWithoutParams?: string;
 }
 
 declare interface UsercssData {

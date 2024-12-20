@@ -1,10 +1,10 @@
-import '/js/browser';
-import {kDisableAll} from '/js/consts';
-import {API} from '/js/msg';
-import * as prefs from '/js/prefs';
-import {CHROME} from '/js/ua';
-import {ownRoot} from '/js/urls';
-import {ignoreChromeError} from '/js/util-webext';
+import '@/js/browser';
+import {kDisableAll} from '@/js/consts';
+import {API} from '@/js/msg';
+import * as prefs from '@/js/prefs';
+import {CHROME} from '@/js/ua';
+import {ownRoot} from '@/js/urls';
+import {ignoreChromeError} from '@/js/util-webext';
 import {sendTab} from './broadcast';
 
 const kStyleManager = 'styleManager';
@@ -53,7 +53,7 @@ export default function initContextMenus() {
       const item = MENUS[id][1] ??= {};
       if (isInit) {
         item.id = id;
-        item.contexts ??= [process.env.MV3 ? 'action' : 'browser_action'];
+        item.contexts ??= [__.MV3 ? 'action' : 'browser_action'];
         item.title = chrome.i18n.getMessage(item.title ?? id);
       }
       if (typeof prefs.__defaults[id] === 'boolean') {
@@ -62,7 +62,7 @@ export default function initContextMenus() {
           item.checked = prefs.__values[id];
           if (isInit) {
             prefs.subscribe(id,
-              !process.env.MV3 && process.env.BUILD !== 'firefox' && CHROME >= 62 && CHROME <= 64
+              !__.MV3 && __.BUILD !== 'firefox' && CHROME >= 62 && CHROME <= 64
               ? toggleCheckmarkBugged
               : toggleCheckmark);
           }

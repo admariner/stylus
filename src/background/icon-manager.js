@@ -1,14 +1,14 @@
-import {kDisableAll} from '/js/consts';
-import {subscribe, __values as __prefs} from '/js/prefs';
-import {CHROME, FIREFOX, MOBILE, VIVALDI} from '/js/ua';
-import {debounce} from '/js/util';
-import {ignoreChromeError, MF_ICON_EXT, MF_ICON_PATH} from '/js/util-webext';
+import {kDisableAll} from '@/js/consts';
+import {subscribe, __values as __prefs} from '@/js/prefs';
+import {CHROME, FIREFOX, MOBILE, VIVALDI} from '@/js/ua';
+import {debounce} from '@/js/util';
+import {ignoreChromeError, MF_ICON_EXT, MF_ICON_PATH} from '@/js/util-webext';
 import * as colorScheme from './color-scheme';
-import {bgBusy} from './common';
+import {bgBusy, bgInit} from './common';
 import {removePreloadedStyles} from './style-via-webrequest';
 import * as tabMan from './tab-manager';
 
-const browserAction = (process.env.MV3 ? chrome.action : chrome.browserAction) || {};
+const browserAction = (__.MV3 ? chrome.action : chrome.browserAction) || {};
 const staleBadges = new Set();
 /** @type {{ [url: string]: ImageData | Promise<ImageData> }} */
 const imageDataCache = {};
@@ -16,8 +16,8 @@ const badgeOvr = {color: '', text: ''};
 // https://github.com/openstyles/stylus/issues/1287 Fenix can't use custom ImageData
 const FIREFOX_ANDROID = FIREFOX && MOBILE;
 const ICON_SIZES =
-  !process.env.MV3 && VIVALDI ? [19, 38] : // old Vivaldi
-    process.env.MV3 || !FIREFOX ? [16, 32] : // Chromium
+  !__.MV3 && VIVALDI ? [19, 38] : // old Vivaldi
+    __.MV3 || !FIREFOX ? [16, 32] : // Chromium
       MOBILE ? [32, 38] : // FF mobile 1x, 1.5x, 2x DPI // TODO: +48
         [16, 32, 38]; // FF desktop toolbar and panel 1x, 1.5x, 2x DPI // TODO: 38->48, +64
 const kBadgeDisabled = 'badgeDisabled';
@@ -27,26 +27,35 @@ const kShowBadge = 'show-badge';
 // https://github.com/openstyles/stylus/issues/335
 let hasCanvas = FIREFOX_ANDROID ? false : null;
 
+bgInit.push(initIcons);
 
-bgBusy.then(() => {
+export async function refreshIconsWhenReady() {
+  if (bgBusy) {
+    bgInit[bgInit.indexOf(initIcons)] = 0;
+    await bgBusy;
+  }
+  initIcons(true);
+}
+
+function initIcons(runNow = !__.MV3) {
   colorScheme.onChange(() => {
     if (__prefs[kIconset] === -1) {
       debounce(refreshGlobalIcon);
     }
-  }, !process.env.MV3);
+  }, runNow);
   subscribe([
     kDisableAll,
     kBadgeDisabled,
     kBadgeNormal,
-  ], () => debounce(refreshIconBadgeColor), true);
+  ], () => debounce(refreshIconBadgeColor), runNow);
   subscribe([
     kShowBadge,
-  ], () => debounce(refreshAllIconsBadgeText), true);
+  ], () => debounce(refreshAllIconsBadgeText), runNow);
   subscribe([
     kDisableAll,
     kIconset,
-  ], () => debounce(refreshAllIcons), true);
-});
+  ], () => debounce(refreshAllIcons), runNow);
+}
 
 tabMan.onUnload.add((tabId, frameId, port) => {
   if (frameId && tabMan.getStyleIds(tabId)) {
@@ -142,8 +151,8 @@ function getStyleCount(tabId) {
 
 // Caches imageData for icon paths
 async function loadImage(url) {
-  const {OffscreenCanvas} = (process.env.MV3 || CHROME && self.createImageBitmap) && self || {};
-  const img = process.env.MV3 || OffscreenCanvas
+  const {OffscreenCanvas} = (__.MV3 || CHROME && self.createImageBitmap) && self || {};
+  const img = __.MV3 || OffscreenCanvas
     ? await createImageBitmap(await (await fetch(url)).blob())
     : await new Promise((resolve, reject) =>
       Object.assign(new Image(), {
@@ -152,7 +161,7 @@ async function loadImage(url) {
         onerror: reject,
       }));
   const {width: w, height: h} = img;
-  const canvas = process.env.MV3 || OffscreenCanvas
+  const canvas = __.MV3 || OffscreenCanvas
     ? new OffscreenCanvas(w, h)
     : Object.assign(document.createElement('canvas'), {width: w, height: h});
   const ctx = canvas.getContext('2d');
