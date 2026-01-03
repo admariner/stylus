@@ -1,6 +1,6 @@
 {
   "name": "Stylus",
-  "version": "2.3.17",
+  "version": "2.3.18",
   "description": "Redesign the web with Stylus, a user styles manager",
   "license": "GPL-3.0-only",
   "repository": "openstyles/stylus",
@@ -81,7 +81,9 @@
     "postinstall": "node tools/build-cm-css-data.js"
   },
   "pnpm": {
-    "neverBuiltDependencies": ["csslint-mod"]
+    "neverBuiltDependencies": [
+      "csslint-mod"
+    ]
   },
   "engines": {
     "node": ">=22.12.0"
